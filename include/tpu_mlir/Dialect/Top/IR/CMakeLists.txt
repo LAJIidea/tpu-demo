@@ -1,0 +1,5 @@
+set(LLVM_TARGET_DEFINITIONS TopOps.td)
+mlir_tablegen(TopAttr.h.inc -gen-attrdef-decls)
+mlir_tablegen(TopAttr.cpp.inc -gen-attrdef-defs)
+add_mlir_dialect(TopOps top)
+add_public_tablegen_target(MLIRTopAttrGen)
