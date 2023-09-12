@@ -1,1 +1,2 @@
 add_subdirectory(TopToTosa)
+add_subdirectory(TopToTpu)

@@ -3,6 +3,7 @@
 //
 #include "tpu_mlir/Dialect/Top/Transforms/Passes.h"
 #include "tpu_mlir/Support/Module.h"
+#include "tpu_mlir/Backend/Arch.h"
 
 using namespace llvm;
 
@@ -13,7 +14,9 @@ namespace tpu_mlir {
         public:
             InitPass() {}
             void runOnOperation() override {
-
+                auto mOp = getOperation();
+                module::init(mOp);
+                backend::Arch::init(freq);
             }
         };
 

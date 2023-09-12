@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     int num_pre = sizeof(PluginPrePass) / sizeof(PluginPrePass[0]);
     int num_post = sizeof(PluginPostPass) / sizeof(PluginPostPass[0]);
     int new_argc = num_pre + argc + num_post;
-    char *new_argv[new_argc];
+    char **new_argv = (char **)malloc(new_argc * sizeof(char *));
     int left = 0;
     int idx = 0;
     for (; left < argc; left++) {

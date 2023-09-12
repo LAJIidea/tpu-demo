@@ -10,7 +10,7 @@ namespace tpu_mlir {
     void registerAllDialects(mlir::DialectRegistry &registry) {
         registry
             .insert<mlir::tosa::TosaDialect, mlir::func::FuncDialect, top::TopDialect,
-                    mlir::quant::QuantizationDialect>();
+                    tpu::TpuDialect, mlir::quant::QuantizationDialect>();
     }
 
     void registerAllPasses() {

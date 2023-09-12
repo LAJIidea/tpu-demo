@@ -34,6 +34,24 @@ namespace tpu_mlir {
     } conv_attr_t;
 
     typedef struct {
+        int64_t batch;
+        int64_t M;
+        int64_t K;
+        int64_t N;
+        int64_t batch_low;
+        bool with_bias;
+        bool do_relu;
+        double relu_limit;
+        bool left_transpose;
+        bool right_transpose;
+        bool output_transpose;
+        bool hdim_is_batch;
+        int64_t input_zp;
+        int64_t right_zp;
+        int64_t left_reuse;
+    } matmul_attr_t;
+
+    typedef struct {
         std::vector<int64_t> in_shape_fix;
         std::vector<int64_t> out_shape_fix;
         std::vector<int64_t> order_fix;

@@ -4,6 +4,8 @@
 
 #include "tpu_mlir/Support/Module.h"
 
+#include <iostream>
+
 using namespace tpu_mlir::top;
 
 struct TopFuseReshape2 : public OpRewritePattern<ReshapeOp> {
@@ -22,22 +24,27 @@ struct TopFuseReshape2 : public OpRewritePattern<ReshapeOp> {
     }
 };
 
+// add + reshape + add + reshape
 struct TopFuseReshape3 : public OpRewritePattern<ReshapeOp> {
     using OpRewritePattern::OpRewritePattern;
 
     LogicalResult matchAndRewrite(ReshapeOp op, PatternRewriter &rewriter) const override {
+//        auto in = op.getInput();
         return failure();
     }
 };
 
+// reshape<(0, ng, -1)> + instance_norm -> group_norm<ng> + reshape
 struct ReshapeInstanceNormPattern : public OpRewritePattern<ReshapeOp> {
     using OpRewritePattern::OpRewritePattern;
 
     LogicalResult matchAndRewrite(ReshapeOp op, PatternRewriter &rewriter) const override {
+
         return failure();
     }
 };
 
+// merge some tanh and power(x, 3) comprised gelu to gelu, first found in pytorch traced gpt2
 struct MergeGeluPattern : public OpRewritePattern<ReshapeOp> {
     using OpRewritePattern::OpRewritePattern;
 

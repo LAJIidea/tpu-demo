@@ -5,6 +5,7 @@
 #pragma once
 
 #include "tpu_mlir/Conversion/TopToTosa/TopLowering.h"
+#include "tpu_mlir/Conversion/TopToTpu/TopLowering.h"
 
 namespace mlir {
 #define GEN_PASS_DECL
@@ -14,5 +15,6 @@ namespace mlir {
 namespace tpu_mlir {
 
     std::unique_ptr<Pass> createConvertTopToTosa();
+    std::unique_ptr<Pass> createConvertTopToTpu();
 
-}
+} // namespace tpu_mlir

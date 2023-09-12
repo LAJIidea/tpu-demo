@@ -4,6 +4,7 @@
 
 #include "tpu_mlir/Backend/Arch.h"
 #include "tpu_mlir/Support/MathUtils.h"
+#include "tpu_mlir/Support/Module.h"
 
 using namespace tpu_mlir::backend;
 
@@ -19,30 +20,30 @@ uint64_t Arch::FREQ = 0;
 Arch *Arch::inst = nullptr;
 
 void Arch::init(uint64_t freq) {
-//    if (inst != nullptr) {
-//        return;
-//    }
-//
-//    chip = module::getChip();
-//    if (chip == module::Chip::ALL) {
-//        // do nothing
-//        return;
-//    } else {
-//        Arch::FREQ = freq;
-//        if (chip == module::Chip::BM1684) {
+    if (inst != nullptr) {
+        return;
+    }
+
+    chip = module::getChip();
+    if (chip == module::Chip::ALL) {
+        // do nothing
+        return;
+    } else {
+        Arch::FREQ = freq;
+        if (chip == module::Chip::BM1684) {
 //            inst = &BM1684::instance();
-//        } else if (chip == module::Chip::BM1684X) {
+        } else if (chip == module::Chip::BM1684X) {
 //            inst = &BM1684X::instance();
-//        } else if (chip == module::Chip::BM1686) {
+        } else if (chip == module::Chip::BM1686) {
 //            inst = &BM1686::instance(A2_1::value);
-//        } else if (chip == module::Chip::CV186X) {
+        } else if (chip == module::Chip::CV186X) {
 //            inst = &BM1686::instance(A2_2::value);
-//        } else if (module::isCV18xx()) {
+        } else if (module::isCV18xx()) {
 //            inst = &CV18xx::instance(chip);
-//        } else {
-//            llvm_unreachable("unsupport chip");
-//        }
-//    }
+        } else {
+            llvm_unreachable("unsupport chip");
+        }
+    }
 }
 
 int64_t Arch::eu_num(double dbytes) { return EU_BYTES / dbytes; }

@@ -1,18 +1,38 @@
 file(GLOB _sources *.cpp Dnnl/*.cpp)
 
-add_llvm_library(TPUMLIRSupport
-        ${_sources}
+if (WIN32)
+    add_llvm_library(TPUMLIRSupport
+            ${_sources}
 
-        DEPENDS
-        ModuleAttrGen
-        MLIRTopOpsIncGen
+            DEPENDS
+            ModuleAttrGen
+            MLIRTopOpsIncGen
 
-        LINK_LIBS PUBLIC
-        MLIRIR
-        MLIRSupport
-        MLIRQuantDialect
-        MLIRQuantUtils
-        MLIRInferenceInterface
-        dnnl
-        z
-)
+            LINK_LIBS PUBLIC
+            MLIRIR
+            MLIRSupport
+            MLIRQuantDialect
+            MLIRQuantUtils
+            MLIRInferenceInterface
+            cnpy
+            dnnl
+            )
+else ()
+    add_llvm_library(TPUMLIRSupport
+            ${_sources}
+
+            DEPENDS
+            ModuleAttrGen
+            MLIRTopOpsIncGen
+
+            LINK_LIBS PUBLIC
+            MLIRIR
+            MLIRSupport
+            MLIRQuantDialect
+            MLIRQuantUtils
+            MLIRInferenceInterface
+            cnpy
+            dnnl
+            z
+            )
+endif ()

@@ -2,7 +2,10 @@
 // Created by 王奥博 on 2023/8/29.
 //
 
-#ifndef TPU_DEMO_DNNLUTILS_H
-#define TPU_DEMO_DNNLUTILS_H
+#pragma once
+#include "oneapi/dnnl/dnnl.hpp"
+using namespace dnnl;
+namespace tpu_mlir {
 
-#endif //TPU_DEMO_DNNLUTILS_H
+    void post_relu(primitive_attr &attr, bool &do_relu, double &relu_limit);
+} // namespace tpu_mlir

@@ -1,0 +1,32 @@
+//
+// Created by kingkiller on 2023/9/6.
+//
+#include "tpu_mlir/Support/MathUtils.h"
+#include "tpu_mlir/Support/Module.h"
+
+void tpu::Conv3DOp::codegen_global_bm1684() {
+
+}
+
+int64_t tpu::Conv3DOp::getBufferSize_bm1684(
+        int64_t in_lmem_bytes, int64_t out_lmem_bytes, int64_t in_nslice,
+        int64_t in_hslice, int64_t out_nslice, int64_t out_hslice) {
+    // TODO for spicial situation
+    return 0;
+}
+
+void tpu::Conv3DOp::codegen_local_bm1684(int64_t n_step, int64_t h_step,
+                                         local_sec_info_t &sec_info) {
+}
+
+uint32_t tpu::Conv3DOp::dyn_codegen_global_bm1684(void *ir_layer_info) {
+    llvm_unreachable("Not Implemented");
+    return 0;
+}
+
+int64_t tpu::Conv3DOp::get_fw_type_bm1684() { return -1; }
+
+int32_t tpu::Conv3DOp::dyn_codegen_local_bm1684(void *ir_layer_info) {
+    llvm_unreachable("Not Implemented");
+    return 0;
+}

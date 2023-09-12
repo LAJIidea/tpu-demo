@@ -3,6 +3,7 @@
 //
 
 #include "tpu_mlir/Support/Module.h"
+#include "tpu_mlir/Support/MathUtils.h"
 
 int64_t top::Depth2SpaceOp::getFLOPs() { return 0; }
 
@@ -58,6 +59,7 @@ LogicalResult top::Depth2SpaceOp::inference(InferenceParameter &p) {
         std::swap(iwstride, owstride);
     }
     int64_t nc = in * ic;
+
 #pragma omp parallel for schedule(static, omp_schedule(nc))
     for (int64_t i = 0; i < nc; i++) {
         int64_t n = i / ic;

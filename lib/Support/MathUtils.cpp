@@ -3,15 +3,19 @@
 //
 
 #include "float.h"
+#include "omp.h"
 #include "tpu_mlir/Support/MathUtils.h"
 #include "tpu_mlir/Support/Dnnl/Dnnl.h"
 #include "llvm/Support/Debug.h"
+#include <numeric>
 
 #define DEBUG_TYPE "math_utils"
 
 namespace tpu_mlir {
 
-
+    int omp_schedule(int count) {
+        return (count + omp_get_num_threads() - 1) / omp_get_num_threads();
+    }
 
     template <typename T>
     int64_t to_int(T v, RoundingMode round_mode) {
@@ -70,6 +74,15 @@ namespace tpu_mlir {
         return v;
     }
 
+    template int64_t saturate<float>(float v, mlir::Type type,
+                                     RoundingMode round_mode);
+
+    template int64_t saturate<int>(int v, mlir::Type type, RoundingMode round_mode);
+    template int64_t saturate<long>(long v, mlir::Type type,
+                                    RoundingMode round_mode);
+    template int64_t saturate<double>(double v, mlir::Type type,
+                                      RoundingMode round_mode);
+
     template <typename T>
     static int remove_value(std::vector<T> &v, int value) {
         int idx = 0;
@@ -106,6 +119,7 @@ namespace tpu_mlir {
 
     void function_relu(float *src, float *dst, int64_t size, float relu_limit, mlir::Type elem_type) {
 #pragma omp parallel for schedule(static, omp_schedule(size))
+
         for (int64_t i = 0; i < size; ++i) {
             dst[i] = src[i] > 0 ? src[i] : 0;
             if (relu_limit > 0.f && dst[i] > relu_limit) {
@@ -116,6 +130,225 @@ namespace tpu_mlir {
             }
         }
     }
+
+    template<typename T>
+    T RightShiftRound(T src, int shift_num, RoundingMode round_mode) {
+        if (shift_num == 0)
+            return src;
+        if (shift_num > 63)
+            shift_num = 63;
+        T val, res;
+        if (shift_num < 0) {
+            return src << (-shift_num);
+        }
+        val = src >> shift_num;
+        res = val;
+        T lo_mask = (1ull << shift_num) - 1;
+        T mant = src & lo_mask;
+        T mant_0d5 = 1ull << (shift_num - 1);
+        if (round_mode == ROUNDING_HALF_TO_EVEN) {
+            if (mant == mant_0d5)
+                res = val + (val & 1);
+            else if (mant > mant_0d5)
+                res = val + 1;
+        } else if (round_mode == ROUNDING_HALF_AWAY_FROM_ZERO) {
+            if (src >= 0 && mant >= mant_0d5)
+                res = val + 1;
+            else if (src < 0 && mant > mant_0d5)
+                res = val + 1;
+        } else if (round_mode == ROUNDING_TOWARDS_ZERO) {
+            if (src < 0)
+                res = val + (mant != 0);
+        } else if (round_mode == ROUNDING_DOWN)
+            res = val;
+        else if (round_mode == ROUNDING_UP)
+            res = val + (mant != 0);
+        else if (round_mode == ROUNDING_HALF_UP) {
+            if (mant >= mant_0d5)
+                res = val + 1;
+        } else if (round_mode == ROUNDING_HALF_DOWN) {
+            if (mant > mant_0d5)
+                res = val + 1;
+        }
+        return res;
+    }
+    template long long RightShiftRound(long long src, int shift_num,
+                                       RoundingMode round_mode);
+    template int64_t RightShiftRound(int64_t src, int shift_num,
+                                     RoundingMode round_mode);
+
+    // to compilable with tflite
+    // tensorflow/lite/kernels/internal/common.h:MultiplyByQuantizedMultiplier()
+    int32_t MultiplyByQuantizedMultiplier(int32_t x, int32_t multiplier, int shift, RoundingMode rmode) {
+        // int shift = -(rshift - 31);
+        int64_t value = shift > 0 ? x << shift : x;
+        value = RightShiftRound(value * multiplier, 31, ROUNDING_HALF_UP);
+        if (value > (1ll << 31) - 1)
+            value = (1ll << 31) - 1;
+        else if (value < -(1ll << 31))
+            value = -(1ll << 31);
+        if (shift < 0) {
+            value = RightShiftRound(value, -shift, rmode);
+        }
+        return (int32_t)value;
+    }
+
+    int64_t applyMultiplierAndRShift(int64_t v, int64_t multiplier, int64_t rshift, tpu::RequantMode qmode,
+                                     RoundingMode rmode) {
+        switch (qmode) {
+            case tpu::RequantMode::MultiplierShift:
+                if (module::isCV18xx()) {
+                    return to_int(((((float)v * multiplier)) / (1 << rshift)), rmode);
+                } else {
+                    return RightShiftRound(v * multiplier, (int)rshift, rmode);
+                }
+            case tpu::RequantMode::OnlyShift:
+                return RightShiftRound(v, (int)rshift, rmode);
+            case tpu::RequantMode::QDM:
+            case tpu::RequantMode::TFLite:
+            case tpu::RequantMode::TFLite_LShift:
+                if (module::isCV18xx()) {
+                    rshift = -rshift;
+                }
+                return MultiplyByQuantizedMultiplier((int32_t)v, (int32_t)multiplier,
+                                                     (int32_t)rshift, rmode);
+        }
+        llvm_unreachable("unsupport quant multiplier mode.");
+        return 0;
+    }
+
+    void tensor_sub_zp(float *tensor_after_zp, float *src, int64_t length, float zero_point) {
+#pragma omp parallel for schedule(static, omp_schedule(length))
+        for (int i = 0; i < length; ++i) {
+            tensor_after_zp[i] = src[i] - zero_point;
+        }
+    }
+
+    void tensor_hw_transpose(float *dst, float *src, int64_t N, int64_t C, int64_t H, int64_t W) {
+#pragma omp parallel for schedule(static, omp_schedule(N *C))
+        for (int64_t nc = 0; nc < N * C; ++nc) {
+            int64_t nc_offset = nc * H * W;
+            for (int w = 0; w < W; ++w) {
+                for (int h = 0; h < H; ++h) {
+                    int64_t d_offset = nc_offset + w * H + h;
+                    int64_t s_offset = nc_offset + h * W + w;
+                    dst[d_offset] = src[s_offset];
+                }
+            }
+        }
+    }
+
+    void tensor_hc_transpose(float *dst, float *src, int64_t N, int64_t C, int64_t H, int64_t W) {
+#pragma omp parallel for schedule(static, omp_schedule(N))
+        for (int64_t n = 0; n < N; ++n) {
+            for (int64_t h = 0; h < H; ++h) {
+                for (int64_t c = 0; c < C; ++c) {
+                    for (int64_t w = 0; w < W; ++w) {
+                        int64_t s_offset = w + h * W + c * H * W + n * C * H * W;
+                        int64_t d_offset = w + c * W + h * C * W + n * C * H * W;
+                        dst[d_offset] = src[s_offset];
+                    }
+                }
+            }
+        }
+    }
+
+    void
+    tensor_split(float *src_data, std::vector<std::vector<float>> &dst_data, std::vector<int64_t> &shape, int slice_num,
+                 int axis) {
+        assert(shape[axis] % slice_num == 0);
+        assert(axis < shape.size());
+        dst_data.resize(slice_num);
+
+        // The data can be treated as 3 dim
+        // 1.pre of the axis
+        // 2.the axis
+        // 3.behind of axis
+        std::vector<int64_t> fake_shape(3);
+        fake_shape[0] = std::accumulate(shape.begin(), shape.begin() + axis, 1,
+                                        std::multiplies<int64_t>());
+        fake_shape[1] = shape[axis];
+        fake_shape[2] = std::accumulate(shape.begin() + axis + 1, shape.end(), 1,
+                                        std::multiplies<int64_t>());
+        std::vector<int64_t> fake_offset(3);
+        fake_offset[2] = 1;
+        fake_offset[1] = fake_offset[2] * fake_shape[2];
+        fake_offset[0] = fake_offset[1] * fake_shape[1];
+
+        int64_t indices = shape[1] / slice_num;
+        int64_t slice_size = fake_shape[0] * indices * fake_offset[1];
+
+        // each slice
+#pragma omp parallel for schedule(static, omp_schedule(slice_num))
+        for (int64_t i = 0; i < slice_num; ++i) {
+            dst_data[i].resize(slice_size);
+            // each fake dim 0
+#pragma omp parallel for schedule(static, omp_schedule(fake_shape[0]))
+            for (int64_t j = 0; j < fake_shape[0]; ++j) {
+                float *src_ptr =
+                        src_data + j * fake_offset[0] + i * indices * fake_offset[1];
+                float *dst_ptr = dst_data[i].data() + j * indices * fake_offset[1];
+                std::copy(src_ptr, src_ptr + indices * fake_offset[1], dst_ptr);
+            }
+        }
+    }
+
+    template<typename T>
+    std::shared_ptr<std::vector<T>>
+    tensor_slice(T *src_data, const std::vector<int64_t> &shape, int64_t axis, int64_t offset, int64_t length) {
+        auto outer_size = std::accumulate(shape.begin(), shape.begin() + axis, 1,
+                                          std::multiplies<int64_t>());
+        auto axis_size = shape[axis];
+        auto inner_size = std::accumulate(shape.begin() + axis + 1, shape.end(), 1,
+                                          std::multiplies<int64_t>());
+        assert(length + offset <= axis_size);
+        auto output =
+                std::make_shared<std::vector<T>>(outer_size * inner_size * length);
+        for (int64_t i = 0; i < outer_size; i++) {
+            T *src_ptr = src_data + i * axis_size * inner_size + offset * inner_size;
+            T *dst_ptr = output->data() + i * length * inner_size;
+            std::copy(src_ptr, src_ptr + length * inner_size, dst_ptr);
+        }
+        return output;
+    }
+
+    template std::shared_ptr<std::vector<float>>
+    tensor_slice(float *src_data, const std::vector<int64_t> &shape, int64_t axis,
+                 int64_t offset, int64_t length);
+
+    template std::shared_ptr<std::vector<uint16_t>>
+    tensor_slice(uint16_t *src_data, const std::vector<int64_t> &shape,
+                 int64_t axis, int64_t offset, int64_t length);
+
+    template std::shared_ptr<std::vector<int8_t>>
+    tensor_slice(int8_t *src_data, const std::vector<int64_t> &shape, int64_t axis,
+                 int64_t offset, int64_t length);
+
+    template<typename T>
+    std::vector<int64_t> tpu_mlir::shape_expand_dim(const std::vector<T> &shape, int dims) {
+        int diff = dims - shape.size();
+        std::vector<int64_t> shape_v(shape.begin(), shape.end());
+        if (diff == 0)
+            return shape_v;
+        shape_v.insert(shape_v.begin(), diff, 1);
+        return shape_v;
+    }
+    template std::vector<int64_t> shape_expand_dim(const std::vector<float> &shape,
+                                                   int dims);
+
+    template<typename T>
+    std::vector<int64_t> shape_expand_dim(llvm::ArrayRef<T> shape, int dims) {
+        int diff = dims - shape.size();
+        std::vector<int64_t> shape_v(shape.begin(), shape.end());
+        if (diff == 0)
+            return shape_v;
+        shape_v.insert(shape_v.begin(), diff, 1);
+        return shape_v;
+    }
+    template std::vector<int64_t> shape_expand_dim(llvm::ArrayRef<float> shape,
+                                                   int dims);
+    template std::vector<int64_t> shape_expand_dim(llvm::ArrayRef<int64_t> shape,
+                                                   int dims);
 
     bool
     permute_reset(const std::vector<int64_t> &shape, const std::vector<int64_t> &order, std::vector<int64_t> &to_shape,
