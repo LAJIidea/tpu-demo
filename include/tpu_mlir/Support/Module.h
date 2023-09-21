@@ -44,6 +44,8 @@ namespace tpu_mlir {
         Mode getMode();
         void setMode(Mode mode);
         State getState();
+        void setState(State state);
+        bool isState(State state);
 
         Platform getPlatform();
         bool isPlatform(Platform plt);

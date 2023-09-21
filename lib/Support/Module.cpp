@@ -79,6 +79,15 @@ namespace tpu_mlir {
             return symbolizeState(s).value_or(State::TOP_F32);
         }
 
+        void setState(State state) {
+            auto s = stringifyState(state);
+            m->setAttr(Attr::STATE, StringAttr::get(ctx, s));
+        }
+
+        bool isState(State state) {
+            return false;
+        }
+
         Platform getPlatform() {
             return platform;
         }
